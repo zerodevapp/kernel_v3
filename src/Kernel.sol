@@ -335,7 +335,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         _invalidateNonce(nonce);
     }
 
-    function uninstallModule(uint256 moduleType, address module, bytes calldata deInitData)
+    function uninstallModule(uint256, address module, bytes calldata deInitData)
         external
         payable
         override
