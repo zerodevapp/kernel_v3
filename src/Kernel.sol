@@ -111,7 +111,8 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             mstore(senderPtr, shl(96, caller()))
 
             // Add 20 bytes for the address appended add the end
-            success := call(gas(), fallbackHandler, 0, calldataPtr, add(calldatasize(), 20), 0, 0)
+            // NOTE: we are only allowing static call for fallback
+            success := staticcall(gas(), fallbackHandler, calldataPtr, add(calldatasize(), 20), 0, 0)
 
             result := allocate(returndatasize())
             returndatacopy(result, 0, returndatasize())
