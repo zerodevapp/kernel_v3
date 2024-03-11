@@ -61,6 +61,7 @@ abstract contract KernelTestBase is Test {
 
     modifier whenInitialized() {
         kernel.initialize(rootValidation, rootValidationConfig.hook, rootValidationConfig.validatorData, rootValidationConfig.hookData);
+        assertEq(kernel.currentNonce(), 2);
         _;
     }
 
@@ -73,6 +74,7 @@ abstract contract KernelTestBase is Test {
         kernel = Kernel(payable(address(new SimpleProxy(address(impl)))));
     }
 
+    // kernel initialize scenario
     function testInitialize() external {
         ValidationId vId = ValidatorLib.validatorToIdentifier(mockValidator);
 
@@ -86,11 +88,31 @@ abstract contract KernelTestBase is Test {
         assertEq(kernel.currentNonce(), 2);
     }
 
-    // scenario
+    // root validator cases
+    function _rootValidatorFailurePreCondition() internal virtual {
+        mockValidator.sudoSetSuccess(false);
+    }
+
+    function _rootValidatorSuccessPreCondition() internal virtual {
+        mockValidator.sudoSetSuccess(true);
+    }
+
+    function _rootValidatorSuccessSignature() internal view virtual returns (bytes memory) {
+        return abi.encodePacked("success");
+    }
+
+    function _rootValidatorFailureSignature() internal view virtual returns (bytes memory) {
+        return abi.encodePacked("failure");
+    }
+
+    function _rootValidatorSuccessCheck() internal virtual {
+        assertEq(123,callee.value());
+    }
+
     function testValidateUserOpSuccess() external whenInitialized {
         vm.deal(address(kernel), 1e18);
-        uint256 count = mockValidator.count();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        _rootValidatorSuccessPreCondition();
         ops[0] = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), 0),
@@ -104,17 +126,18 @@ abstract contract KernelTestBase is Test {
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
-            signature: hex""
+            signature: _rootValidatorSuccessSignature()
         });
-        mockValidator.sudoSetSuccess(true);
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
-        assertEq(mockValidator.count(), count + 1);
+        _rootValidatorSuccessCheck();
     }
+
 
     function testValidateUserOpFail() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         uint256 count = mockValidator.count();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        _rootValidatorFailurePreCondition();
         ops[0] = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), 0),
@@ -128,9 +151,8 @@ abstract contract KernelTestBase is Test {
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
-            signature: hex""
+            signature: _rootValidatorFailureSignature()
         });
-        mockValidator.sudoSetSuccess(false);
         vm.expectRevert();
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         assertEq(mockValidator.count(), count);
@@ -149,6 +171,18 @@ abstract contract KernelTestBase is Test {
         );
     }
 
+    function encodePermissionValidatorData() internal returns(bytes memory data) {
+    }
+
+    function encodeHookData() internal returns(bytes memory data) {
+    }
+
+    function encodeSelectorData() internal returns(bytes memory data) {
+    }
+
+    function getEnableSig() internal returns(bytes memory data) {
+    }
+
     function testValidateUserOpSuccessValidatorEnableMode() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         MockValidator newValidator = new MockValidator();
@@ -161,7 +195,6 @@ abstract contract KernelTestBase is Test {
             bytes20(address(newValidator)),
             0
         );
-        assertEq(kernel.currentNonce(), 2);
         ops[0] = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), encodedAsNonceKey),
