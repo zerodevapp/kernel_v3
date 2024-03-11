@@ -128,6 +128,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         bool success;
         bytes memory result;
         if (address(config.hook) == address(0)) {
+            // action not installed, use fallback
             (IFallback fallbackHandler, IHook hook) = _fallbackConfig();
             if (address(fallbackHandler) == address(0)) {
                 revert InvalidFallback();
@@ -138,15 +139,6 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 _doPostHook(hook, context, success, result);
             } else {
                 (success, result) = _doFallback2771(fallbackHandler);
-                if (!success) {
-                    assembly {
-                        revert(add(result, 0x20), mload(result))
-                    }
-                } else {
-                    assembly {
-                        return(add(result, 0x20), mload(result))
-                    }
-                }
             }
         } else {
             // action installed
