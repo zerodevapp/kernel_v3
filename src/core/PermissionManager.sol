@@ -192,7 +192,9 @@ abstract contract ValidationManager is EIP712, SelectorManager {
         }
         for (uint256 i = 0; i < permissionEnableData.length - 1; i++) {
             state.permissionConfig[permission].policyData.push(PolicyData.wrap(bytes22(permissionEnableData[i][0:22])));
-            IPolicy(address(bytes20(permissionEnableData[i][2:22]))).onInstall(abi.encodePacked(bytes32(PermissionId.unwrap(permission)), permissionEnableData[i][22:]));
+            IPolicy(address(bytes20(permissionEnableData[i][2:22]))).onInstall(
+                abi.encodePacked(bytes32(PermissionId.unwrap(permission)), permissionEnableData[i][22:])
+            );
         }
         // last permission data will be signer
         ISigner signer = ISigner(address(bytes20(permissionEnableData[permissionEnableData.length - 1][2:22])));

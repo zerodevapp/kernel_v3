@@ -95,7 +95,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         version = "0.3.0-beta";
     }
 
-    function _doFallback2771(IFallback fallbackHandler) internal returns (bool success, bytes memory result) {
+    function _doFallback2771(IFallback fallbackHandler) internal view returns (bool success, bytes memory result) {
         assembly {
             function allocate(length) -> pos {
                 pos := mload(0x40)
@@ -125,6 +125,8 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
 
     fallback() external payable {
         SelectorConfig memory config = _selectorConfig(msg.sig);
+        bool success;
+        bytes memory result;
         if (address(config.hook) == address(0)) {
             (IFallback fallbackHandler, IHook hook) = _fallbackConfig();
             if (address(fallbackHandler) == address(0)) {
@@ -132,10 +134,10 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             }
             if (address(hook) != address(1)) {
                 bytes memory context = _doPreHook(hook, msg.data);
-                (bool success, bytes memory result) = _doFallback2771(fallbackHandler);
+                (success, result) = _doFallback2771(fallbackHandler);
                 _doPostHook(hook, context, success, result);
             } else {
-                (bool success, bytes memory result) = _doFallback2771(fallbackHandler);
+                (success, result) = _doFallback2771(fallbackHandler);
                 if (!success) {
                     assembly {
                         revert(add(result, 0x20), mload(result))
@@ -153,9 +155,18 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 context = _doPreHook(config.hook, msg.data);
             }
             // execute action
-            (bool success, bytes memory ret) = ExecLib._executeDelegatecall(config.target, msg.data);
+            (success, result) = ExecLib._executeDelegatecall(config.target, msg.data);
             if (address(config.hook) != address(1)) {
-                _doPostHook(config.hook, context, success, ret);
+                _doPostHook(config.hook, context, success, result);
+            }
+        }
+        if (!success) {
+            assembly {
+                revert(add(result, 0x20), mload(result))
+            }
+        } else {
+            assembly {
+                return(add(result, 0x20), mload(result))
             }
         }
     }
