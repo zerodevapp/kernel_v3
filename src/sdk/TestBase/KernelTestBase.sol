@@ -167,7 +167,7 @@ abstract contract KernelTestBase is Test {
         assertEq(0, callee.value());
     }
 
-    function _prepareRootUserOp(bool success) internal returns (PackedUserOperation memory op) {
+    function _prepareRootUserOp(bytes memory callData, bool success) internal returns (PackedUserOperation memory op) {
         if (success) {
             _rootValidatorSuccessPreCondition();
         } else {
@@ -177,11 +177,7 @@ abstract contract KernelTestBase is Test {
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), 0),
             initCode: hex"",
-            callData: abi.encodeWithSelector(
-                kernel.execute.selector,
-                ExecLib.encodeSimpleSingle(),
-                ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123))
-                ),
+            callData: callData,
             accountGasLimits: bytes32(abi.encodePacked(uint128(1000000), uint128(1000000))),
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
@@ -193,7 +189,9 @@ abstract contract KernelTestBase is Test {
     function testRootValidateUserOpSuccess() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        ops[0] = _prepareRootUserOp(true);
+        ops[0] = _prepareRootUserOp(encodeExecute(
+            address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123)
+        ),true);
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         _rootValidatorSuccessCheck();
     }
@@ -201,7 +199,9 @@ abstract contract KernelTestBase is Test {
     function testRootValidateUserOpFail() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        ops[0] = _prepareRootUserOp(false);
+        ops[0] = _prepareRootUserOp(
+            encodeExecute(address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123))
+        ,false);
         vm.expectRevert();
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
     }
@@ -273,7 +273,7 @@ abstract contract KernelTestBase is Test {
         mockValidator.sudoSetValidSig(abi.encodePacked("enableSig"));
     }
 
-    function _prepareValidatorEnableUserOp() internal returns (PackedUserOperation memory op) {
+    function _prepareValidatorEnableUserOp(bytes memory callData) internal returns (PackedUserOperation memory op) {
         _rootValidatorSuccessPreCondition();
         _enableValidatorSuccessPreCondition();
         uint192 encodedAsNonceKey = ValidatorLib.encodeAsNonceKey(
@@ -286,11 +286,7 @@ abstract contract KernelTestBase is Test {
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), encodedAsNonceKey),
             initCode: hex"",
-            callData: abi.encodeWithSelector(
-                kernel.execute.selector,
-                ExecLib.encodeSimpleSingle(),
-                ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123))
-                ),
+            callData: callData, 
             accountGasLimits: bytes32(abi.encodePacked(uint128(1000000), uint128(1000000))),
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
@@ -306,7 +302,7 @@ abstract contract KernelTestBase is Test {
         });
     }
 
-    function _preparePermissionEnableUserOp() internal returns (PackedUserOperation memory op) {
+    function _preparePermissionEnableUserOp(bytes memory callData) internal returns (PackedUserOperation memory op) {
         uint192 encodedAsNonceKey = ValidatorLib.encodeAsNonceKey(
             ValidationMode.unwrap(VALIDATION_MODE_ENABLE),
             ValidationType.unwrap(VALIDATION_TYPE_PERMISSION),
@@ -320,11 +316,7 @@ abstract contract KernelTestBase is Test {
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), encodedAsNonceKey),
             initCode: hex"",
-            callData: abi.encodeWithSelector(
-                kernel.execute.selector,
-                ExecLib.encodeSimpleSingle(),
-                ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123))
-                ),
+            callData: callData,
             accountGasLimits: bytes32(abi.encodePacked(uint128(1000000), uint128(1000000))),
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
@@ -340,10 +332,20 @@ abstract contract KernelTestBase is Test {
         });
     }
 
+    function encodeExecute(address _to, uint256 _amount, bytes memory _data) internal view returns(bytes memory) {
+        return abi.encodeWithSelector(
+            kernel.execute.selector,
+            ExecLib.encodeSimpleSingle(),
+            ExecLib.encodeSingle(_to, _amount, _data)
+        );
+    }
+
     function testValidateUserOpSuccessValidatorEnableMode() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        ops[0] = _prepareValidatorEnableUserOp();
+        ops[0] = _prepareValidatorEnableUserOp(encodeExecute(
+            address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123)
+        ));
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         ValidationManager.ValidationConfig memory config =
             kernel.validatorConfig(ValidatorLib.validatorToIdentifier(enabledValidator));
@@ -370,7 +372,9 @@ abstract contract KernelTestBase is Test {
     function testValidateUserOpSuccessPermissionEnableMode() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        ops[0] = _preparePermissionEnableUserOp();
+        ops[0] = _preparePermissionEnableUserOp(encodeExecute(
+            address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123)
+        ));
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         assertEq(kernel.currentNonce(), 3);
     }
