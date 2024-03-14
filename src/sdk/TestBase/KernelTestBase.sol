@@ -49,18 +49,43 @@ abstract contract KernelTestBase is Test {
     Kernel kernel;
     IEntryPoint entrypoint;
     ValidationId rootValidation;
+
     struct RootValidationConfig {
         IHook hook;
         bytes validatorData;
         bytes hookData;
     }
+
     RootValidationConfig rootValidationConfig;
     MockValidator mockValidator;
     MockCallee callee;
 
+    IValidator enabledValidator;
+    EnableValidatorConfig validatorConfig;
+
+    struct EnableValidatorConfig {
+        IHook hook;
+        bytes hookData;
+        bytes validatorData;
+    }
+
+    PermissionId enabledPermission;
+    EnablePermissionConfig permissionConfig;
+
+    struct EnablePermissionConfig {
+        IHook hook;
+        bytes hookData;
+        IPolicy[] policies;
+        bytes[] policyData;
+        ISigner signer;
+        bytes signerData;
+    }
+    // todo selectorData
 
     modifier whenInitialized() {
-        kernel.initialize(rootValidation, rootValidationConfig.hook, rootValidationConfig.validatorData, rootValidationConfig.hookData);
+        kernel.initialize(
+            rootValidation, rootValidationConfig.hook, rootValidationConfig.validatorData, rootValidationConfig.hookData
+        );
         assertEq(kernel.currentNonce(), 2);
         _;
     }
@@ -72,6 +97,33 @@ abstract contract KernelTestBase is Test {
         Kernel impl = new Kernel(entrypoint);
         callee = new MockCallee();
         kernel = Kernel(payable(address(new SimpleProxy(address(impl)))));
+        _setRootValidationConfig();
+        _setEnableValidatorConfig();
+        _setEnablePermissionConfig();
+    }
+
+    // things to override on test
+    function _setRootValidationConfig() internal {}
+
+    function _setEnableValidatorConfig() internal {
+        enabledValidator = new MockValidator();
+    }
+
+    function _setEnablePermissionConfig() internal {
+        IPolicy[] memory policies = new IPolicy[](2);
+        MockPolicy mockPolicy = new MockPolicy();
+        MockPolicy mockPolicy2 = new MockPolicy();
+        policies[0] = mockPolicy;
+        policies[1] = mockPolicy2;
+        bytes[] memory policyData = new bytes[](2);
+        policyData[0] = "policy1";
+        policyData[1] = "policy2";
+        MockSigner mockSigner = new MockSigner();
+
+        permissionConfig.policies = policies;
+        permissionConfig.signer = mockSigner;
+        permissionConfig.policyData = policyData;
+        permissionConfig.signerData = "signer";
     }
 
     // kernel initialize scenario
@@ -106,14 +158,20 @@ abstract contract KernelTestBase is Test {
     }
 
     function _rootValidatorSuccessCheck() internal virtual {
-        assertEq(123,callee.value());
+        assertEq(123, callee.value());
     }
 
-    function testValidateUserOpSuccess() external whenInitialized {
-        vm.deal(address(kernel), 1e18);
-        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        _rootValidatorSuccessPreCondition();
-        ops[0] = PackedUserOperation({
+    function _rootValidatorFailureCheck() internal virtual {
+        assertEq(0, callee.value());
+    }
+
+    function _prepareRootUserOp(bool success) internal returns (PackedUserOperation memory op) {
+        if (success) {
+            _rootValidatorSuccessPreCondition();
+        } else {
+            _rootValidatorFailurePreCondition();
+        }
+        op = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), 0),
             initCode: hex"",
@@ -126,36 +184,24 @@ abstract contract KernelTestBase is Test {
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
-            signature: _rootValidatorSuccessSignature()
+            signature: success ? _rootValidatorSuccessSignature() : _rootValidatorFailureSignature()
         });
+    }
+
+    function testRootValidateUserOpSuccess() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(true);
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         _rootValidatorSuccessCheck();
     }
 
-
-    function testValidateUserOpFail() external whenInitialized {
+    function testRootValidateUserOpFail() external whenInitialized {
         vm.deal(address(kernel), 1e18);
-        uint256 count = mockValidator.count();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
-        _rootValidatorFailurePreCondition();
-        ops[0] = PackedUserOperation({
-            sender: address(kernel),
-            nonce: entrypoint.getNonce(address(kernel), 0),
-            initCode: hex"",
-            callData: abi.encodeWithSelector(
-                kernel.execute.selector,
-                ExecLib.encodeSimpleSingle(),
-                ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(callee.setValue.selector, 123))
-                ),
-            accountGasLimits: bytes32(abi.encodePacked(uint128(1000000), uint128(1000000))),
-            preVerificationGas: 1000000,
-            gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
-            paymasterAndData: hex"",
-            signature: _rootValidatorFailureSignature()
-        });
+        ops[0] = _prepareRootUserOp(false);
         vm.expectRevert();
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
-        assertEq(mockValidator.count(), count);
     }
 
     function encodeEnableSignature(
@@ -171,31 +217,56 @@ abstract contract KernelTestBase is Test {
         );
     }
 
-    function encodePermissionValidatorData() internal returns(bytes memory data) {
+    function encodePermissionValidatorData() internal returns (bytes memory data) {}
+
+    function encodeHookData() internal returns (bytes memory data) {}
+
+    function encodeSelectorData() internal returns (bytes memory data) {}
+
+    function getEnableSig(bool success) internal returns (bytes memory data) {
+        if (success) {
+            return "enableSig";
+        } else {
+            return "failEnableSig";
+        }
     }
 
-    function encodeHookData() internal returns(bytes memory data) {
+    function getValidatorSig(bool success) internal returns (bytes memory data) {
+        if (success) {
+            return "userOpSig";
+        } else {
+            return "failUserOpSig";
+        }
     }
 
-    function encodeSelectorData() internal returns(bytes memory data) {
+    function _enableValidatorSuccessPreCondition() internal {
+        MockValidator(address(enabledValidator)).sudoSetSuccess(true);
+        mockValidator.sudoSetValidSig(abi.encodePacked("enableSig"));
     }
 
-    function getEnableSig() internal returns(bytes memory data) {
+    function _enablePermissionSuccessPreCondition() internal {
+        MockPolicy(address(permissionConfig.policies[0])).sudoSetValidSig(
+            address(kernel), bytes32(bytes4(0xdeadbeef)), "policy1"
+        );
+        MockPolicy(address(permissionConfig.policies[1])).sudoSetValidSig(
+            address(kernel), bytes32(bytes4(0xdeadbeef)), "policy2"
+        );
+        MockSigner(address(permissionConfig.signer)).sudoSetValidSig(
+            address(kernel), bytes32(bytes4(0xdeadbeef)), abi.encodePacked("userOpSig")
+        );
+        mockValidator.sudoSetValidSig(abi.encodePacked("enableSig"));
     }
 
-    function testValidateUserOpSuccessValidatorEnableMode() external whenInitialized {
-        vm.deal(address(kernel), 1e18);
-        MockValidator newValidator = new MockValidator();
-        uint256 count = mockValidator.count();
-        uint256 newCount = newValidator.count();
-        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+    function _prepareValidatorEnableUserOp() internal returns (PackedUserOperation memory op) {
+        _rootValidatorSuccessPreCondition();
+        _enableValidatorSuccessPreCondition();
         uint192 encodedAsNonceKey = ValidatorLib.encodeAsNonceKey(
             ValidationMode.unwrap(VALIDATION_MODE_ENABLE),
             ValidationType.unwrap(VALIDATION_TYPE_VALIDATOR),
-            bytes20(address(newValidator)),
+            bytes20(address(enabledValidator)),
             0
         );
-        ops[0] = PackedUserOperation({
+        op = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), encodedAsNonceKey),
             initCode: hex"",
@@ -209,29 +280,17 @@ abstract contract KernelTestBase is Test {
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
             signature: encodeEnableSignature(
-                IHook(address(0)),
-                abi.encodePacked("hello"),
-                abi.encodePacked("world"),
+                validatorConfig.hook,
+                validatorConfig.validatorData,
+                validatorConfig.hookData,
                 abi.encodePacked(kernel.execute.selector),
-                abi.encodePacked("enableSig"),
-                abi.encodePacked("userOpSig")
+                getEnableSig(true),
+                getValidatorSig(true)
                 )
         });
-        mockValidator.sudoSetValidSig(abi.encodePacked("enableSig"));
-        newValidator.sudoSetSuccess(true);
-        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
-        assertEq(mockValidator.count(), count);
-        assertEq(newValidator.count(), newCount + 1);
-        ValidationManager.ValidationConfig memory config =
-            kernel.validatorConfig(ValidatorLib.validatorToIdentifier(newValidator));
-        assertEq(config.nonce, 2);
-        assertEq(address(config.hook), address(1));
-        assertEq(kernel.currentNonce(), 3);
     }
 
-    function testValidateUserOpSuccessPermissionEnableMode() external whenInitialized {
-        vm.deal(address(kernel), 1e18);
-        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+    function _preparePermissionEnableUserOp() internal returns (PackedUserOperation memory op) {
         uint192 encodedAsNonceKey = ValidatorLib.encodeAsNonceKey(
             ValidationMode.unwrap(VALIDATION_MODE_ENABLE),
             ValidationType.unwrap(VALIDATION_TYPE_PERMISSION),
@@ -239,20 +298,9 @@ abstract contract KernelTestBase is Test {
             0
         );
         assertEq(kernel.currentNonce(), 2);
-        bytes[] memory permissions = new bytes[](3);
-        MockPolicy mockPolicy = new MockPolicy();
-        MockPolicy mockPolicy2 = new MockPolicy();
-        MockSigner mockSigner = new MockSigner();
-        permissions[0] = abi.encodePacked(
-            PolicyData.unwrap(ValidatorLib.encodePolicyData(false, false, address(mockPolicy))), hex"eeeeee"
-        );
-        permissions[1] = abi.encodePacked(
-            PolicyData.unwrap(ValidatorLib.encodePolicyData(false, false, address(mockPolicy2))), hex"cafecafe"
-        );
-        permissions[2] = abi.encodePacked(
-            PolicyData.unwrap(ValidatorLib.encodePolicyData(false, false, address(mockSigner))), hex"beefbeef"
-        );
-        ops[0] = PackedUserOperation({
+        _rootValidatorSuccessPreCondition();
+        _enablePermissionSuccessPreCondition();
+        op = PackedUserOperation({
             sender: address(kernel),
             nonce: entrypoint.getNonce(address(kernel), encodedAsNonceKey),
             initCode: hex"",
@@ -267,7 +315,7 @@ abstract contract KernelTestBase is Test {
             paymasterAndData: hex"",
             signature: encodeEnableSignature(
                 IHook(address(0)),
-                abi.encode(permissions),
+                encodePermissionsEnableData(),
                 abi.encodePacked("world"),
                 abi.encodePacked(kernel.execute.selector),
                 abi.encodePacked("enableSig"),
@@ -283,29 +331,65 @@ abstract contract KernelTestBase is Test {
                 )
                 )
         });
+    }
 
-        mockPolicy.sudoSetValidSig(address(kernel), bytes32(bytes4(0xdeadbeef)), "policy1");
-        mockPolicy2.sudoSetValidSig(address(kernel), bytes32(bytes4(0xdeadbeef)), "policy2");
-        mockValidator.sudoSetValidSig(abi.encodePacked("enableSig"));
-        mockSigner.sudoSetValidSig(address(kernel), bytes32(bytes4(0xdeadbeef)), abi.encodePacked("userOpSig"));
+    function testValidateUserOpSuccessValidatorEnableMode() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareValidatorEnableUserOp();
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+        ValidationManager.ValidationConfig memory config =
+            kernel.validatorConfig(ValidatorLib.validatorToIdentifier(enabledValidator));
+        assertEq(config.nonce, 2);
+        assertEq(address(config.hook), address(1));
+        assertEq(kernel.currentNonce(), 3);
+    }
+
+    function encodePermissionsEnableData() internal returns (bytes memory) {
+        bytes[] memory permissions = new bytes[](permissionConfig.policies.length + 1);
+        for (uint256 i = 0; i < permissions.length - 1; i++) {
+            permissions[i] = abi.encodePacked(
+                PolicyData.unwrap(ValidatorLib.encodePolicyData(false, false, address(permissionConfig.policies[i]))),
+                permissionConfig.policyData[i]
+            );
+        }
+        permissions[permissions.length - 1] = abi.encodePacked(
+            PolicyData.unwrap(ValidatorLib.encodePolicyData(false, false, address(permissionConfig.signer))),
+            permissionConfig.signerData
+        );
+        return abi.encode(permissions);
+    }
+
+    function testValidateUserOpSuccessPermissionEnableMode() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _preparePermissionEnableUserOp();
         entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
         assertEq(kernel.currentNonce(), 3);
     }
 
-    // install action
-    // - with hook
-    // - without hook
-    // install fallback
-    // - with hook
-    // - without hook
-    // install executor
-    // - with hook
-    // - without hook
-    // install Validator
-    // #1 signature
-    // eip 1271 replay issue
-    // - validator
-    // - permission
+    function testActionInstall() external {}
+
+    function testActionInstallWithHook() external {}
+
+    function testFallbackInstall() external {}
+
+    function testFallbackInstallWithHook() external {}
+
+    function testExecutorInstall() external {}
+
+    function testExecutorInstallWithHook() external {}
+
+    function testSignatureValidator() external {}
+
+    function testSignaturePermission() external {}
+
+    function testSignatureRoot() external {}
+
+    function testEnablePermission() external {}
+
+    function testEnableValidator() external {}
+
     // #2 permission standard
     // - root : validator, enable : permission
     // - root : validator, enable : permission
