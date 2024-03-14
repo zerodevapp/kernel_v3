@@ -92,8 +92,6 @@ abstract contract KernelTestBase is Test {
 
     function setUp() public {
         entrypoint = IEntryPoint(EntryPointLib.deploy());
-        mockValidator = new MockValidator();
-        rootValidation = ValidatorLib.validatorToIdentifier(mockValidator);
         Kernel impl = new Kernel(entrypoint);
         callee = new MockCallee();
         kernel = Kernel(payable(address(new SimpleProxy(address(impl)))));
@@ -103,7 +101,10 @@ abstract contract KernelTestBase is Test {
     }
 
     // things to override on test
-    function _setRootValidationConfig() internal {}
+    function _setRootValidationConfig() internal {
+        mockValidator = new MockValidator();
+        rootValidation = ValidatorLib.validatorToIdentifier(mockValidator);
+    }
 
     function _setEnableValidatorConfig() internal {
         enabledValidator = new MockValidator();
@@ -149,12 +150,13 @@ abstract contract KernelTestBase is Test {
         mockValidator.sudoSetSuccess(true);
     }
 
-    function _rootValidatorSuccessSignature() internal view virtual returns (bytes memory) {
-        return abi.encodePacked("success");
-    }
-
-    function _rootValidatorFailureSignature() internal view virtual returns (bytes memory) {
-        return abi.encodePacked("failure");
+    function _rootValidatorSignature(PackedUserOperation memory op, bool success)
+        internal
+        view
+        virtual
+        returns (bytes memory)
+    {
+        return success ? abi.encodePacked("success") : abi.encodePacked("failure");
     }
 
     function _rootValidatorSuccessCheck() internal virtual {
@@ -184,7 +186,7 @@ abstract contract KernelTestBase is Test {
             preVerificationGas: 1000000,
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
-            signature: success ? _rootValidatorSuccessSignature() : _rootValidatorFailureSignature()
+            signature: _rootValidatorSignature(op, success)
         });
     }
 
@@ -217,13 +219,7 @@ abstract contract KernelTestBase is Test {
         );
     }
 
-    function encodePermissionValidatorData() internal returns (bytes memory data) {}
-
-    function encodeHookData() internal returns (bytes memory data) {}
-
-    function encodeSelectorData() internal returns (bytes memory data) {}
-
-    function getEnableSig(bool success) internal returns (bytes memory data) {
+    function getEnableSig(bytes32 digest, bool success) internal returns (bytes memory data) {
         if (success) {
             return "enableSig";
         } else {
@@ -231,12 +227,32 @@ abstract contract KernelTestBase is Test {
         }
     }
 
-    function getValidatorSig(bool success) internal returns (bytes memory data) {
+    function getValidatorSig(PackedUserOperation memory, bool success) internal returns (bytes memory data) {
         if (success) {
             return "userOpSig";
         } else {
             return "failUserOpSig";
         }
+    }
+
+    function getPermissionSig(PackedUserOperation memory op, bool success) internal returns (bytes memory data) {
+        bytes[] memory sigs = _getPolicyAndSignerSig(op, success);
+        for (uint8 i = 0; i < sigs.length - 1; i++) {
+            if (sigs[i].length > 0) {
+                data = abi.encodePacked(data, bytes1(i), bytes8(uint64(sigs[i].length)), sigs[i]);
+            }
+        }
+        data = abi.encodePacked(data, bytes1(0xff), sigs[sigs.length - 1]);
+    }
+
+    function _getPolicyAndSignerSig(PackedUserOperation memory op, bool success)
+        internal
+        returns (bytes[] memory data)
+    {
+        data = new bytes[](3);
+        data[0] = "policy1";
+        data[1] = "policy2";
+        data[2] = "userOpSig";
     }
 
     function _enableValidatorSuccessPreCondition() internal {
@@ -284,8 +300,8 @@ abstract contract KernelTestBase is Test {
                 validatorConfig.validatorData,
                 validatorConfig.hookData,
                 abi.encodePacked(kernel.execute.selector),
-                getEnableSig(true),
-                getValidatorSig(true)
+                getEnableSig(bytes32(0), true),
+                getValidatorSig(op, true)
                 )
         });
     }
@@ -314,21 +330,12 @@ abstract contract KernelTestBase is Test {
             gasFees: bytes32(abi.encodePacked(uint128(1), uint128(1))),
             paymasterAndData: hex"",
             signature: encodeEnableSignature(
-                IHook(address(0)),
+                permissionConfig.hook,
                 encodePermissionsEnableData(),
-                abi.encodePacked("world"),
+                permissionConfig.hookData,
                 abi.encodePacked(kernel.execute.selector),
-                abi.encodePacked("enableSig"),
-                abi.encodePacked(
-                    bytes1(0),
-                    bytes8(uint64(7)),
-                    "policy1",
-                    bytes1(uint8(1)),
-                    bytes8(uint64(7)),
-                    "policy2",
-                    bytes1(0xff),
-                    "userOpSig"
-                )
+                getEnableSig(bytes32(0), true),
+                getPermissionSig(op, true)
                 )
         });
     }
