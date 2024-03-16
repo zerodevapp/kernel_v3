@@ -6,6 +6,7 @@ import "forge-std/Test.sol";
 import "src/mock/MockValidator.sol";
 import "src/mock/MockPolicy.sol";
 import "src/mock/MockSigner.sol";
+import "src/mock/MockAction.sol";
 import "src/core/PermissionManager.sol";
 import "./erc4337Util.sol";
 
@@ -377,7 +378,30 @@ abstract contract KernelTestBase is Test {
         assertEq(kernel.currentNonce(), 3);
     }
 
-    function testActionInstall() external {}
+    function testActionInstall() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        MockAction mockAction = new MockAction();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            encodeExecute(
+                address(kernel),
+                0,
+                abi.encodeWithSelector(
+                    kernel.installModule.selector,
+                    6,
+                    address(mockAction),
+                    abi.encodePacked(MockAction.doSomething.selector, address(0))
+                )
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+
+        SelectorManager.SelectorConfig memory config = kernel.selectorConfig(MockAction.doSomething.selector);
+        assertEq(address(config.hook), address(1));
+
+        MockAction(address(kernel)).doSomething();
+    }
 
     function testActionInstallWithHook() external {}
 

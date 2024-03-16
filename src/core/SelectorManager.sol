@@ -19,6 +19,10 @@ abstract contract SelectorManager {
         mapping(bytes4 => SelectorConfig) selectorConfig;
     }
 
+    function selectorConfig(bytes4 selector) external view returns (SelectorConfig memory) {
+        return _selectorConfig(selector);
+    }
+
     function _fallbackConfig() internal view returns (IFallback fallbackHandler, IHook hook) {
         SelectorStorage storage ss;
         bytes32 slot = SELECTOR_MANAGER_STORAGE_SLOT;

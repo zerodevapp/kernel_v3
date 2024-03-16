@@ -266,6 +266,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
 
     function isValidSignature(bytes32 hash, bytes calldata signature) external view override returns (bytes4) {
         (ValidationId vId, bytes calldata sig) = ValidatorLib.decodeSignature(signature);
+        // TODO: check vId is installed
         ValidationType vType = ValidatorLib.getType(vId);
         // TODO: deal with sudo mode
         if (vType == VALIDATION_TYPE_VALIDATOR) {
@@ -295,7 +296,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             ValidationStorage storage vs = _validatorStorage();
             ValidationId vId = ValidatorLib.validatorToIdentifier(IValidator(module));
             ValidationConfig memory config =
-                ValidationConfig({nonce: vs.currentNonce++, hook: IHook(address(bytes20(initData[0:20])))});
+                ValidationConfig({nonce: vs.currentNonce, hook: IHook(address(bytes20(initData[0:20])))});
             bytes calldata validatorData;
             bytes calldata hookData;
             assembly {
@@ -305,6 +306,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
             _installValidation(vId, config, validatorData, hookData);
+            vs.currentNonce++;
         } else if (moduleType == 2) {
             // executor
             _installExecutor(IExecutor(module), IHook(address(bytes20(initData[0:20]))), initData[20:]);
@@ -317,12 +319,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             );
         } else if (moduleType == 6) {
             // action
-            _installSelector(
-                bytes4(initData[0:4]),
-                address(bytes20(initData[4:24])),
-                IHook(address(bytes20(initData[24:44]))),
-                initData[44:]
-            );
+            _installSelector(bytes4(initData[0:4]), module, IHook(address(bytes20(initData[4:24]))), initData[24:]);
         } else {
             revert InvalidModuleType();
         }

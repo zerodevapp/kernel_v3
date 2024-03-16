@@ -42,6 +42,9 @@ abstract contract ValidationManager is EIP712, SelectorManager {
     error InvalidMode();
     error InvalidValidator();
     error InvalidSignature();
+    error EnableNotApproved();
+    error PolicySignatureOrderError();
+    error SignerPrefixNotPresent();
     error PolicyDataTooLarge();
     error InvalidValidationType();
     error InvalidNonce();
@@ -255,7 +258,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
             result = signer.checkSignature(bytes32(PermissionId.unwrap(pId)), address(this), digest, enableSig);
         }
         if (result != 0x1626ba7e) {
-            revert InvalidSignature();
+            revert EnableNotApproved();
         }
 
         assembly {
@@ -370,7 +373,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
                 userOpSig = userOpSig[9 + length:];
             } else if (idx < i) {
                 // signature is not in order
-                revert InvalidSignature();
+                revert PolicySignatureOrderError();
             } else {
                 userOp.signature = "";
             }
@@ -385,7 +388,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
             }
         }
         if (uint8(bytes1(userOpSig[0])) != 255) {
-            revert InvalidSignature();
+            revert SignerPrefixNotPresent();
         }
         userOp.signature = userOpSig[1:];
         return (validationData, state.permissionConfig[pId].signer);
@@ -403,7 +406,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
         mSig.digest = digest;
         _checkPermissionPolicy(mSig, state, sig);
         if (uint8(bytes1(sig[0])) != 255) {
-            revert InvalidSignature();
+            revert SignerPrefixNotPresent();
         }
         sig = sig[1:];
         return (state.permissionConfig[mSig.permission].signer, mSig.validationData, sig);
@@ -425,7 +428,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
                 sig = sig[9 + mSig.length:];
             } else if (mSig.idx < i) {
                 // signature is not in order
-                revert InvalidSignature();
+                revert PolicySignatureOrderError();
             } else {
                 mSig.permSig = sig[0:0];
             }
