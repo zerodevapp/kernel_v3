@@ -281,20 +281,6 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         }
     }
 
-    function _checkPermissionSignature(PermissionId pId, address caller, bytes32 hash, bytes calldata sig)
-        internal
-        view
-        returns (bytes4)
-    {
-        (ISigner signer, ValidationData valdiationData, bytes calldata validatorSig) =
-            _checkSignaturePolicy(pId, caller, hash, sig);
-        (ValidAfter validAfter, ValidUntil validUntil,) = parseValidationData(ValidationData.unwrap(valdiationData));
-        if (block.timestamp < ValidAfter.unwrap(validAfter) || block.timestamp > ValidUntil.unwrap(validUntil)) {
-            return 0xffffffff;
-        }
-        return signer.checkSignature(bytes32(PermissionId.unwrap(pId)), caller, _toWrappedHash(hash), validatorSig);
-    }
-
     function installModule(uint256 moduleType, address module, bytes calldata initData)
         external
         payable

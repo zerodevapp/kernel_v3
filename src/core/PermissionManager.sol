@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 import {IValidator, IHook, IPolicy, ISigner} from "../interfaces/IERC7579Modules.sol";
 import {PackedUserOperation} from "../interfaces/PackedUserOperation.sol";
 import {SelectorManager} from "./SelectorManager.sol";
-import {ValidationData} from "../interfaces/IAccount.sol";
+import {ValidationData, ValidAfter, ValidUntil, parseValidationData} from "../interfaces/IAccount.sol";
 import {IAccountExecute} from "../interfaces/IAccountExecute.sol";
 import {EIP712} from "solady/utils/EIP712.sol";
 import {
@@ -447,6 +447,20 @@ abstract contract ValidationManager is EIP712, SelectorManager {
                 mSig.validationData = _intersectValidationData(mSig.validationData, vd);
             }
         }
+    }
+
+    function _checkPermissionSignature(PermissionId pId, address caller, bytes32 hash, bytes calldata sig)
+        internal
+        view
+        returns (bytes4)
+    {
+        (ISigner signer, ValidationData valdiationData, bytes calldata validatorSig) =
+            _checkSignaturePolicy(pId, caller, hash, sig);
+        (ValidAfter validAfter, ValidUntil validUntil,) = parseValidationData(ValidationData.unwrap(valdiationData));
+        if (block.timestamp < ValidAfter.unwrap(validAfter) || block.timestamp > ValidUntil.unwrap(validUntil)) {
+            return 0xffffffff;
+        }
+        return signer.checkSignature(bytes32(PermissionId.unwrap(pId)), caller, _toWrappedHash(hash), validatorSig);
     }
 
     function _toWrappedHash(bytes32 hash) internal view returns (bytes32) {
