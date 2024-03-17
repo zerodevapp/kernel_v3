@@ -265,25 +265,34 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     }
 
     function isValidSignature(bytes32 hash, bytes calldata signature) external view override returns (bytes4) {
+        ValidationStorage storage vs = _validatorStorage();
         (ValidationId vId, bytes calldata sig) = ValidatorLib.decodeSignature(signature);
-        // TODO: check vId is installed
-        ValidationType vType = ValidatorLib.getType(vId);
-        // TODO: deal with sudo mode
-        if (vType == VALIDATION_TYPE_VALIDATOR) {
-            IValidator validator = ValidatorLib.getValidator(vId);
-            bytes32 wrappedHash = _toWrappedHash(hash);
-            return validator.isValidSignatureWithSender(msg.sender, wrappedHash, sig);
-        } else {
-            PermissionId pId = ValidatorLib.getPermissionId(vId);
-            (ISigner signer, ValidationData valdiationData, bytes calldata validatorSig) =
-                _checkSignaturePolicy(pId, msg.sender, hash, sig);
-            bytes32 wrappedHash = _toWrappedHash(hash);
-            (ValidAfter validAfter, ValidUntil validUntil,) = parseValidationData(ValidationData.unwrap(valdiationData));
-            if (block.timestamp < ValidAfter.unwrap(validAfter) || block.timestamp > ValidUntil.unwrap(validUntil)) {
-                return 0xffffffff;
-            }
-            return signer.checkSignature(bytes32(PermissionId.unwrap(pId)), msg.sender, wrappedHash, validatorSig);
+        if (ValidatorLib.getType(vId) == VALIDATION_TYPE_SUDO) {
+            vId = vs.rootValidator;
         }
+        if (address(vs.validatorConfig[vId].hook) == address(0)) {
+            revert InvalidValidator();
+        }
+        if (ValidatorLib.getType(vId) == VALIDATION_TYPE_VALIDATOR) {
+            IValidator validator = ValidatorLib.getValidator(vId);
+            return validator.isValidSignatureWithSender(msg.sender, _toWrappedHash(hash), sig);
+        } else {
+            return _checkPermissionSignature(ValidatorLib.getPermissionId(vId), msg.sender, hash, sig);
+        }
+    }
+
+    function _checkPermissionSignature(PermissionId pId, address caller, bytes32 hash, bytes calldata sig)
+        internal
+        view
+        returns (bytes4)
+    {
+        (ISigner signer, ValidationData valdiationData, bytes calldata validatorSig) =
+            _checkSignaturePolicy(pId, caller, hash, sig);
+        (ValidAfter validAfter, ValidUntil validUntil,) = parseValidationData(ValidationData.unwrap(valdiationData));
+        if (block.timestamp < ValidAfter.unwrap(validAfter) || block.timestamp > ValidUntil.unwrap(validUntil)) {
+            return 0xffffffff;
+        }
+        return signer.checkSignature(bytes32(PermissionId.unwrap(pId)), caller, _toWrappedHash(hash), validatorSig);
     }
 
     function installModule(uint256 moduleType, address module, bytes calldata initData)
@@ -300,9 +309,9 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             bytes calldata validatorData;
             bytes calldata hookData;
             assembly {
-                validatorData.offset := add(add(initData.offset, 64), calldataload(add(initData.offset, 32)))
+                validatorData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 32)))
                 validatorData.length := calldataload(sub(validatorData.offset, 32))
-                hookData.offset := add(add(initData.offset, 64), calldataload(add(initData.offset, 64)))
+                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 64)))
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
             _installValidation(vId, config, validatorData, hookData);
@@ -311,12 +320,15 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             // executor
             _installExecutor(IExecutor(module), IHook(address(bytes20(initData[0:20]))), initData[20:]);
         } else if (moduleType == 3) {
-            _installFallback(
-                IFallback(module),
-                IHook(address(bytes20(initData[0:20]))),
-                initData[20:20], // TODO : fallbackData
-                initData[20:]
-            );
+            bytes calldata fallbackData;
+            bytes calldata hookData;
+            assembly {
+                fallbackData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 32)))
+                fallbackData.length := calldataload(sub(fallbackData.offset, 32))
+                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 64)))
+                hookData.length := calldataload(sub(hookData.offset, 32))
+            }
+            _installFallback(IFallback(module), IHook(address(bytes20(initData[0:20]))), fallbackData, hookData);
         } else if (moduleType == 6) {
             // action
             _installSelector(bytes4(initData[0:4]), module, IHook(address(bytes20(initData[4:24]))), initData[24:]);
