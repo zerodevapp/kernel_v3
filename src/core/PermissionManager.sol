@@ -251,11 +251,13 @@ abstract contract ValidationManager is EIP712, SelectorManager {
         if (vType == VALIDATION_TYPE_VALIDATOR) {
             IValidator validator = ValidatorLib.getValidator(state.rootValidator);
             result = validator.isValidSignatureWithSender(address(this), digest, enableSig);
-        } else {
+        } else if (vType == VALIDATION_TYPE_PERMISSION) {
             PermissionId pId = ValidatorLib.getPermissionId(state.rootValidator);
             ISigner signer;
             (signer, validationData, enableSig) = _checkSignaturePolicy(pId, address(this), digest, enableSig);
             result = signer.checkSignature(bytes32(PermissionId.unwrap(pId)), address(this), digest, enableSig);
+        } else {
+            revert InvalidValidationType();
         }
         if (result != 0x1626ba7e) {
             revert EnableNotApproved();

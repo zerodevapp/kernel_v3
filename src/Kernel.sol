@@ -306,7 +306,15 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             _installValidation(vId, config, validatorData, hookData);
             vs.currentNonce++;
         } else if (moduleType == 2) {
-            _installExecutor(IExecutor(module), IHook(address(bytes20(initData[0:20]))), initData[20:]);
+            bytes calldata executorData;
+            bytes calldata hookData;
+            assembly {
+                executorData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 20)))
+                executorData.length := calldataload(sub(executorData.offset, 32))
+                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 52)))
+                hookData.length := calldataload(sub(hookData.offset, 32))
+            }
+            _installExecutor(IExecutor(module), IHook(address(bytes20(initData[0:20]))), executorData, hookData);
         } else if (moduleType == 3) {
             bytes calldata fallbackData;
             bytes calldata hookData;

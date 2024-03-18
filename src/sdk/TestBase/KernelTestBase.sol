@@ -8,6 +8,7 @@ import "src/mock/MockPolicy.sol";
 import "src/mock/MockSigner.sol";
 import "src/mock/MockAction.sol";
 import "src/mock/MockHook.sol";
+import "src/mock/MockExecutor.sol";
 import "src/mock/MockFallback.sol";
 import "src/core/PermissionManager.sol";
 import "./erc4337Util.sol";
@@ -387,15 +388,11 @@ abstract contract KernelTestBase is Test {
         MockAction mockAction = new MockAction();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = _prepareRootUserOp(
-            encodeExecute(
-                address(kernel),
-                0,
-                abi.encodeWithSelector(
-                    kernel.installModule.selector,
-                    6,
-                    address(mockAction),
-                    abi.encodePacked(MockAction.doSomething.selector, address(0))
-                )
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                6,
+                address(mockAction),
+                abi.encodePacked(MockAction.doSomething.selector, address(0))
             ),
             true
         );
@@ -413,15 +410,11 @@ abstract contract KernelTestBase is Test {
         MockAction mockAction = new MockAction();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = _prepareRootUserOp(
-            encodeExecute(
-                address(kernel),
-                0,
-                abi.encodeWithSelector(
-                    kernel.installModule.selector,
-                    6,
-                    address(mockAction),
-                    abi.encodePacked(MockAction.doSomething.selector, address(mockHook), abi.encodePacked("hookData"))
-                )
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                6,
+                address(mockAction),
+                abi.encodePacked(MockAction.doSomething.selector, address(mockHook), abi.encodePacked("hookData"))
             ),
             true
         );
@@ -446,15 +439,11 @@ abstract contract KernelTestBase is Test {
         MockFallback mockFallback = new MockFallback();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = _prepareRootUserOp(
-            encodeExecute(
-                address(kernel),
-                0,
-                abi.encodeWithSelector(
-                    kernel.installModule.selector,
-                    3,
-                    address(mockFallback),
-                    abi.encodePacked(address(0), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("")))
-                )
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                3,
+                address(mockFallback),
+                abi.encodePacked(address(0), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("")))
             ),
             true
         );
@@ -478,16 +467,12 @@ abstract contract KernelTestBase is Test {
         MockFallback mockFallback = new MockFallback();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = _prepareRootUserOp(
-            encodeExecute(
-                address(kernel),
-                0,
-                abi.encodeWithSelector(
-                    kernel.installModule.selector,
-                    3,
-                    address(mockFallback),
-                    abi.encodePacked(
-                        address(mockHook), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("hookData"))
-                    )
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                3,
+                address(mockFallback),
+                abi.encodePacked(
+                    address(mockHook), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("hookData"))
                 )
             ),
             true
@@ -514,9 +499,68 @@ abstract contract KernelTestBase is Test {
         assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
     }
 
-    function testExecutorInstall() external {}
+    function testExecutorInstall() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        MockExecutor mockExecutor = new MockExecutor();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                2,
+                address(mockExecutor),
+                abi.encodePacked(address(0), abi.encode(abi.encodePacked("executorData"), abi.encodePacked("")))
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
 
-    function testExecutorInstallWithHook() external {}
+        assertEq(mockExecutor.data(address(kernel)), abi.encodePacked("executorData"));
+        ExecutorManager.ExecutorConfig memory config = kernel.executorConfig(mockExecutor);
+        assertEq(address(config.hook), address(1));
+
+        ExecMode mode = ExecLib.encodeSimpleSingle();
+        bytes memory data =
+            ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(MockCallee.setValue.selector, 123));
+        mockExecutor.sudoDoExec(IERC7579Account(kernel), mode, data);
+        assertEq(callee.value(), 123);
+    }
+
+    function testExecutorInstallWithHook() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        MockExecutor mockExecutor = new MockExecutor();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            abi.encodeWithSelector(
+                kernel.installModule.selector,
+                2,
+                address(mockExecutor),
+                abi.encodePacked(
+                    address(mockHook), abi.encode(abi.encodePacked("executorData"), abi.encodePacked("hookData"))
+                )
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+        ExecutorManager.ExecutorConfig memory config = kernel.executorConfig(mockExecutor);
+        assertEq(address(config.hook), address(mockHook));
+
+        assertEq(mockExecutor.data(address(kernel)), abi.encodePacked("executorData"));
+
+        assertEq(mockHook.data(address(kernel)), abi.encodePacked("hookData"));
+        ExecMode mode = ExecLib.encodeSimpleSingle();
+        bytes memory data =
+            ExecLib.encodeSingle(address(callee), 0, abi.encodeWithSelector(MockCallee.setValue.selector, 123));
+        mockExecutor.sudoDoExec(IERC7579Account(kernel), mode, data);
+        assertEq(callee.value(), 123);
+
+        assertEq(
+            mockHook.preHookData(address(kernel)),
+            abi.encodePacked(
+                address(mockExecutor), abi.encodeWithSelector(Kernel.executeFromExecutor.selector, mode, data)
+            )
+        );
+        assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
+    }
 
     function testSignatureValidator() external {}
 
