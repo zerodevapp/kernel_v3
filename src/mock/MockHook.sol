@@ -30,8 +30,8 @@ contract MockHook is IHook {
         override
         returns (bytes memory hookData)
     {
-        preHookData[msgSender] = msgData;
-        return data[msgSender];
+        preHookData[msg.sender] = abi.encodePacked(msgSender, msgData);
+        return data[msg.sender];
     }
 
     function postCheck(bytes calldata hookData) external payable override returns (bool success) {

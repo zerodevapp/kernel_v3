@@ -7,6 +7,7 @@ import "src/mock/MockValidator.sol";
 import "src/mock/MockPolicy.sol";
 import "src/mock/MockSigner.sol";
 import "src/mock/MockAction.sol";
+import "src/mock/MockHook.sol";
 import "src/core/PermissionManager.sol";
 import "./erc4337Util.sol";
 
@@ -60,6 +61,7 @@ abstract contract KernelTestBase is Test {
     RootValidationConfig rootValidationConfig;
     MockValidator mockValidator;
     MockCallee callee;
+    MockHook mockHook;
 
     IValidator enabledValidator;
     EnableValidatorConfig validatorConfig;
@@ -96,6 +98,7 @@ abstract contract KernelTestBase is Test {
         Kernel impl = new Kernel(entrypoint);
         callee = new MockCallee();
         kernel = Kernel(payable(address(new SimpleProxy(address(impl)))));
+        mockHook = new MockHook();
         _setRootValidationConfig();
         _setEnableValidatorConfig();
         _setEnablePermissionConfig();
@@ -399,11 +402,43 @@ abstract contract KernelTestBase is Test {
 
         SelectorManager.SelectorConfig memory config = kernel.selectorConfig(MockAction.doSomething.selector);
         assertEq(address(config.hook), address(1));
-
+        vm.expectEmit(address(kernel));
+        emit MockAction.MockActionEvent(address(kernel));
         MockAction(address(kernel)).doSomething();
     }
 
-    function testActionInstallWithHook() external {}
+    function testActionInstallWithHook() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        MockAction mockAction = new MockAction();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            encodeExecute(
+                address(kernel),
+                0,
+                abi.encodeWithSelector(
+                    kernel.installModule.selector,
+                    6,
+                    address(mockAction),
+                    abi.encodePacked(MockAction.doSomething.selector, address(mockHook), abi.encodePacked("hookData"))
+                )
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+
+        assertEq(mockHook.data(address(kernel)), abi.encodePacked("hookData"));
+
+        SelectorManager.SelectorConfig memory config = kernel.selectorConfig(MockAction.doSomething.selector);
+        assertEq(address(config.hook), address(mockHook));
+
+        vm.expectEmit(address(kernel));
+        emit MockAction.MockActionEvent(address(kernel));
+        MockAction(address(kernel)).doSomething();
+        assertEq(
+            mockHook.preHookData(address(kernel)), abi.encodePacked(address(this), MockAction.doSomething.selector)
+        );
+        assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
+    }
 
     function testFallbackInstall() external {}
 
