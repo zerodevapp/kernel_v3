@@ -66,6 +66,9 @@ abstract contract SelectorManager {
         bytes calldata fallbackData,
         bytes calldata hookData
     ) internal {
+        if (address(hook) == address(0)) {
+            hook = IHook(address(1));
+        }
         SelectorStorage storage ss;
         bytes32 slot = SELECTOR_MANAGER_STORAGE_SLOT;
         assembly {

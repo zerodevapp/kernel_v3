@@ -441,7 +441,37 @@ abstract contract KernelTestBase is Test {
         assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
     }
 
-    function testFallbackInstall() external whenInitialized {}
+    function testFallbackInstall() external whenInitialized {
+        vm.deal(address(kernel), 1e18);
+        MockFallback mockFallback = new MockFallback();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            encodeExecute(
+                address(kernel),
+                0,
+                abi.encodeWithSelector(
+                    kernel.installModule.selector,
+                    3,
+                    address(mockFallback),
+                    abi.encodePacked(address(0), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("")))
+                )
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+
+        assertEq(mockFallback.data(address(kernel)), abi.encodePacked("fallbackData"));
+
+        (IFallback fallbackHandler, IHook fallbackHook) = kernel.fallbackConfig();
+        assertEq(address(fallbackHook), address(1));
+        assertEq(address(fallbackHandler), address(mockFallback));
+
+        (bool success, bytes memory result) =
+            address(kernel).call(abi.encodeWithSelector(MockFallback.fallbackFunction.selector, uint256(10)));
+        assertTrue(success);
+        (uint256 res) = abi.decode(result, (uint256));
+        assertEq(res, 100);
+    }
 
     function testFallbackInstallWithHook() external whenInitialized {
         vm.deal(address(kernel), 1e18);
