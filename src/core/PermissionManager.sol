@@ -49,6 +49,8 @@ abstract contract ValidationManager is EIP712, SelectorManager {
     error InvalidValidationType();
     error InvalidNonce();
     error PolicyFailed(uint256 i);
+    error PermissionNotAlllowedForUserOp();
+    error PermissionNotAlllowedForSignature();
 
     // CHECK is it better to have a group config?
     // erc7579 plugins
@@ -58,7 +60,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
     }
 
     struct PermissionConfig {
-        PassFlag passFlag;
+        PassFlag permissionFlag; // TODO: use this to show what is capable for permission
         ISigner signer;
         PolicyData[] policyData;
     }
@@ -202,7 +204,7 @@ abstract contract ValidationManager is EIP712, SelectorManager {
         // last permission data will be signer
         ISigner signer = ISigner(address(bytes20(permissionEnableData[permissionEnableData.length - 1][2:22])));
         state.permissionConfig[permission].signer = signer;
-        state.permissionConfig[permission].passFlag =
+        state.permissionConfig[permission].permissionFlag =
             PassFlag.wrap(bytes2(permissionEnableData[permissionEnableData.length - 1][0:2]));
         signer.onInstall(permissionEnableData[permissionEnableData.length - 1][22:]);
     }
@@ -231,6 +233,9 @@ abstract contract ValidationManager is EIP712, SelectorManager {
             );
         } else {
             PermissionId pId = ValidatorLib.getPermissionId(vId);
+            if (PassFlag.unwrap(state.permissionConfig[pId].permissionFlag) & PassFlag.unwrap(SKIP_USEROP) != 0) {
+                revert PermissionNotAlllowedForUserOp();
+            }
             (ValidationData policyCheck, ISigner signer) = _checkUserOpPolicy(pId, userOp, userOpSig);
             validationData = _intersectValidationData(validationData, policyCheck);
             validationData = _intersectValidationData(

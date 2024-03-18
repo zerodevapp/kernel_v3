@@ -15,7 +15,9 @@ import {
     PermissionId,
     VALIDATION_TYPE_SUDO,
     VALIDATION_TYPE_VALIDATOR,
-    VALIDATION_TYPE_PERMISSION
+    VALIDATION_TYPE_PERMISSION,
+    PassFlag,
+    SKIP_SIGNATURE
 } from "./core/PermissionManager.sol";
 import {HookManager} from "./core/HookManager.sol";
 import {ExecutorManager} from "./core/ExecutorManager.sol";
@@ -89,7 +91,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     }
 
     // NOTE : when eip 1153 has been enabled, this can be transient storage
-    mapping(bytes32 userOpHash => IHook) public executionHook;
+    mapping(bytes32 userOpHash => IHook) internal executionHook;
 
     function _domainNameAndVersion() internal pure override returns (string memory name, string memory version) {
         name = "Kernel";
@@ -280,7 +282,12 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             IValidator validator = ValidatorLib.getValidator(vId);
             return validator.isValidSignatureWithSender(msg.sender, _toWrappedHash(hash), sig);
         } else {
-            return _checkPermissionSignature(ValidatorLib.getPermissionId(vId), msg.sender, hash, sig);
+            PermissionId pId = ValidatorLib.getPermissionId(vId);
+            PassFlag permissionFlag = vs.permissionConfig[pId].permissionFlag;
+            if (PassFlag.unwrap(permissionFlag) & PassFlag.unwrap(SKIP_SIGNATURE) != 0) {
+                revert PermissionNotAlllowedForSignature();
+            }
+            return _checkPermissionSignature(pId, msg.sender, hash, sig);
         }
     }
 
