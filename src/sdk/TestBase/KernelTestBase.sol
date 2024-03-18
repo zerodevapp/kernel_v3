@@ -441,10 +441,9 @@ abstract contract KernelTestBase is Test {
         assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
     }
 
-    function testFallbackInstall() external whenInitialized {
-    }
+    function testFallbackInstall() external whenInitialized {}
 
-    function testFallbackInstallWithHook() external whenInitialized{
+    function testFallbackInstallWithHook() external whenInitialized {
         vm.deal(address(kernel), 1e18);
         MockFallback mockFallback = new MockFallback();
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
@@ -456,10 +455,9 @@ abstract contract KernelTestBase is Test {
                     kernel.installModule.selector,
                     3,
                     address(mockFallback),
-                    abi.encodePacked(address(mockHook), abi.encode(
-                        abi.encodePacked("fallbackData"),
-                        abi.encodePacked("hookData")
-                    ))
+                    abi.encodePacked(
+                        address(mockHook), abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked("hookData"))
+                    )
                 )
             ),
             true
@@ -474,12 +472,14 @@ abstract contract KernelTestBase is Test {
         assertEq(address(fallbackHook), address(mockHook));
         assertEq(address(fallbackHandler), address(mockFallback));
 
-        (bool success, bytes memory result) = address(kernel).call(abi.encodeWithSelector(MockFallback.fallbackFunction.selector, uint256(10)));
+        (bool success, bytes memory result) =
+            address(kernel).call(abi.encodeWithSelector(MockFallback.fallbackFunction.selector, uint256(10)));
         assertTrue(success);
         (uint256 res) = abi.decode(result, (uint256));
         assertEq(res, 100);
         assertEq(
-            mockHook.preHookData(address(kernel)), abi.encodePacked(address(this), MockFallback.fallbackFunction.selector, uint256(10))
+            mockHook.preHookData(address(kernel)),
+            abi.encodePacked(address(this), MockFallback.fallbackFunction.selector, uint256(10))
         );
         assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
     }

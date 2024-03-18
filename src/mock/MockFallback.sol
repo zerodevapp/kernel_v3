@@ -23,14 +23,14 @@ contract MockFallback is IFallback {
     }
 
     function fallbackFunction(uint256 v) external pure returns (uint256) {
-        return v*v;
+        return v * v;
     }
 
-    function getData() external view returns(bytes memory) {
+    function getData() external view returns (bytes memory) {
         return data[msg.sender];
     }
 
-    function getCaller() external view returns(address) {
+    function getCaller() external view returns (address) {
         return address(bytes20(msg.data[msg.data.length - 20:]));
     }
 }
