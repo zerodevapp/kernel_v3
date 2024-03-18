@@ -8,6 +8,7 @@ import "src/mock/MockPolicy.sol";
 import "src/mock/MockSigner.sol";
 import "src/mock/MockAction.sol";
 import "src/mock/MockHook.sol";
+import "src/mock/MockFallback.sol";
 import "src/core/PermissionManager.sol";
 import "./erc4337Util.sol";
 
@@ -440,9 +441,48 @@ abstract contract KernelTestBase is Test {
         assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
     }
 
-    function testFallbackInstall() external {}
+    function testFallbackInstall() external whenInitialized {
+    }
 
-    function testFallbackInstallWithHook() external {}
+    function testFallbackInstallWithHook() external whenInitialized{
+        vm.deal(address(kernel), 1e18);
+        MockFallback mockFallback = new MockFallback();
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = _prepareRootUserOp(
+            encodeExecute(
+                address(kernel),
+                0,
+                abi.encodeWithSelector(
+                    kernel.installModule.selector,
+                    3,
+                    address(mockFallback),
+                    abi.encodePacked(address(mockHook), abi.encode(
+                        abi.encodePacked("fallbackData"),
+                        abi.encodePacked("hookData")
+                    ))
+                )
+            ),
+            true
+        );
+        entrypoint.handleOps(ops, payable(address(0xdeadbeef)));
+
+        assertEq(mockFallback.data(address(kernel)), abi.encodePacked("fallbackData"));
+
+        assertEq(mockHook.data(address(kernel)), abi.encodePacked("hookData"));
+
+        (IFallback fallbackHandler, IHook fallbackHook) = kernel.fallbackConfig();
+        assertEq(address(fallbackHook), address(mockHook));
+        assertEq(address(fallbackHandler), address(mockFallback));
+
+        (bool success, bytes memory result) = address(kernel).call(abi.encodeWithSelector(MockFallback.fallbackFunction.selector, uint256(10)));
+        assertTrue(success);
+        (uint256 res) = abi.decode(result, (uint256));
+        assertEq(res, 100);
+        assertEq(
+            mockHook.preHookData(address(kernel)), abi.encodePacked(address(this), MockFallback.fallbackFunction.selector, uint256(10))
+        );
+        assertEq(mockHook.postHookData(address(kernel)), abi.encodePacked("hookData"));
+    }
 
     function testExecutorInstall() external {}
 

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IHook} from "../interfaces/IERC7579Modules.sol";
-
 contract MockHook is IHook {
     mapping(address => bytes) public data;
     mapping(address => bytes) public preHookData;

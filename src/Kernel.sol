@@ -115,8 +115,11 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             // NOTE: we are only allowing static call for fallback
             success := staticcall(gas(), fallbackHandler, calldataPtr, add(calldatasize(), 20), 0, 0)
 
-            result := allocate(returndatasize())
-            returndatacopy(result, 0, returndatasize())
+            result := mload(0x40)
+            mstore(result, returndatasize()) // Store the length.
+            let o := add(result, 0x20)
+            returndatacopy(o, 0x00, returndatasize()) // Copy the returndata.
+            mstore(0x40, add(o, returndatasize())) // Allocate the memory.
         }
     }
 
@@ -295,28 +298,26 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             bytes calldata validatorData;
             bytes calldata hookData;
             assembly {
-                validatorData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 32)))
+                validatorData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 20)))
                 validatorData.length := calldataload(sub(validatorData.offset, 32))
-                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 64)))
+                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 52)))
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
             _installValidation(vId, config, validatorData, hookData);
             vs.currentNonce++;
         } else if (moduleType == 2) {
-            // executor
             _installExecutor(IExecutor(module), IHook(address(bytes20(initData[0:20]))), initData[20:]);
         } else if (moduleType == 3) {
             bytes calldata fallbackData;
             bytes calldata hookData;
             assembly {
-                fallbackData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 32)))
+                fallbackData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 20)))
                 fallbackData.length := calldataload(sub(fallbackData.offset, 32))
-                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 64)))
+                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 52)))
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
             _installFallback(IFallback(module), IHook(address(bytes20(initData[0:20]))), fallbackData, hookData);
         } else if (moduleType == 6) {
-            // action
             _installSelector(bytes4(initData[0:4]), module, IHook(address(bytes20(initData[4:24]))), initData[24:]);
         } else {
             revert InvalidModuleType();
