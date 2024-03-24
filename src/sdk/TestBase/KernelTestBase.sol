@@ -10,7 +10,7 @@ import "src/mock/MockAction.sol";
 import "src/mock/MockHook.sol";
 import "src/mock/MockExecutor.sol";
 import "src/mock/MockFallback.sol";
-import "src/core/PermissionManager.sol";
+import "src/core/ValidationManager.sol";
 import "./erc4337Util.sol";
 
 contract SimpleProxy {

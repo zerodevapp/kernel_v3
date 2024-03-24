@@ -18,7 +18,7 @@ import {
     VALIDATION_TYPE_PERMISSION,
     PassFlag,
     SKIP_SIGNATURE
-} from "./core/PermissionManager.sol";
+} from "./core/ValidationManager.sol";
 import {HookManager} from "./core/HookManager.sol";
 import {ExecutorManager} from "./core/ExecutorManager.sol";
 import {SelectorManager} from "./core/SelectorManager.sol";
@@ -43,7 +43,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
 
     constructor(IEntryPoint _entrypoint) {
         entrypoint = _entrypoint;
-        _validatorStorage().rootValidator = ValidationId.wrap(bytes21(abi.encodePacked(hex"deadbeef")));
+        _validationStorage().rootValidator = ValidationId.wrap(bytes21(abi.encodePacked(hex"deadbeef")));
     }
 
     modifier onlyEntryPoint() {
@@ -61,7 +61,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     }
 
     modifier onlyEntryPointOrSelfOrRoot() {
-        IValidator validator = ValidatorLib.getValidator(_validatorStorage().rootValidator);
+        IValidator validator = ValidatorLib.getValidator(_validationStorage().rootValidator);
         if (
             msg.sender != address(entrypoint) && msg.sender != address(this) // do rootValidator hook
         ) {
@@ -80,7 +80,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     function initialize(ValidationId _rootValidator, IHook hook, bytes calldata validatorData, bytes calldata hookData)
         external
     {
-        ValidationStorage storage vs = _validatorStorage();
+        ValidationStorage storage vs = _validationStorage();
         require(ValidationId.unwrap(vs.rootValidator) == bytes21(0), "already initialized");
         if (ValidationId.unwrap(_rootValidator) == bytes21(0)) {
             revert InvalidValidator();
@@ -183,7 +183,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         onlyEntryPoint
         returns (ValidationData validationData)
     {
-        ValidationStorage storage vs = _validatorStorage();
+        ValidationStorage storage vs = _validationStorage();
         // ONLY ENTRYPOINT
         // Major change for v2 => v3
         // 1. instead of packing 4 bytes prefix to userOp.signature to determine the mode, v3 uses userOp.nonce's first 2 bytes to check the mode
@@ -276,7 +276,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     }
 
     function isValidSignature(bytes32 hash, bytes calldata signature) external view override returns (bytes4) {
-        ValidationStorage storage vs = _validatorStorage();
+        ValidationStorage storage vs = _validationStorage();
         (ValidationId vId, bytes calldata sig) = ValidatorLib.decodeSignature(signature);
         if (ValidatorLib.getType(vId) == VALIDATION_TYPE_SUDO) {
             vId = vs.rootValidator;
@@ -304,7 +304,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         onlyEntryPointOrSelfOrRoot
     {
         if (moduleType == 1) {
-            ValidationStorage storage vs = _validatorStorage();
+            ValidationStorage storage vs = _validationStorage();
             ValidationId vId = ValidatorLib.validatorToIdentifier(IValidator(module));
             ValidationConfig memory config =
                 ValidationConfig({nonce: vs.currentNonce, hook: IHook(address(bytes20(initData[0:20])))});
@@ -392,7 +392,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
     {
         if (moduleType == 1) {
             return
-                _validatorStorage().validatorConfig[ValidatorLib.validatorToIdentifier(IValidator(module))].nonce != 0;
+                _validationStorage().validatorConfig[ValidatorLib.validatorToIdentifier(IValidator(module))].nonce != 0;
         } else if (moduleType == 2) {
             return address(_executorConfig(IExecutor(module)).hook) != address(0);
         } else if (moduleType == 3) {
