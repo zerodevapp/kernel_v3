@@ -150,7 +150,7 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
     // but for permission mode, we do it naively by setting hook to address(0).
     // it is more recommended to use a nonce revoke to make sure the validator has been revoked
     // also, we are not calling hook.onInstall here
-    function _uninstallValidation(ValidationId vId, bytes calldata validatorData) internal returns(IHook hook) {
+    function _uninstallValidation(ValidationId vId, bytes calldata validatorData) internal returns (IHook hook) {
         ValidationStorage storage state = _validationStorage();
         require(vId != state.rootValidator, "Root validator cannot be uninstalled");
         hook = state.validationConfig[vId].hook;
