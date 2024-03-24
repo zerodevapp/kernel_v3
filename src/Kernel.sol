@@ -382,7 +382,10 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         payable
         onlyEntryPointOrSelfOrRoot
     {
-        _uninstallValidation(vId, deinitData, hookDeinitData);
+        IHook hook = _uninstallValidation(vId, deinitData);
+        if(bytes1(hookDeinitData[0]) == bytes1(0xff)) {
+            _uninstallHook(hook, hookDeinitData[1:]);
+        }
     }
 
     function invalidateNonce(uint32 nonce) external payable onlyEntryPointOrSelfOrRoot {
@@ -412,8 +415,10 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 hookData.offset := add(add(deInitData.offset, 32), calldataload(add(deInitData.offset, 32)))
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
-            _uninstallValidation(vId, validatorData, hookData);
-            //_uninstallHook this is handled on uninstallValidation
+            IHook hook = _uninstallValidation(vId, validatorData);
+            if(bytes1(hookData[0]) == bytes1(0xff)) {
+                _uninstallHook(hook, hookData[1:]);
+            }
         } else if (moduleType == 2) {
             bytes calldata executorData;
             bytes calldata hookData;
@@ -424,7 +429,9 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
             IHook hook = _uninstallExecutor(IExecutor(module), executorData);
-            _uninstallHook(hook, hookData);
+            if(bytes1(hookData[0]) == bytes1(0xff)) {
+                _uninstallHook(hook, hookData[1:]);
+            }
         } else if (moduleType == 3) {
             bytes calldata fallbackData;
             bytes calldata hookData;
@@ -437,7 +444,9 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             (IFallback fallbackHandler,) = _fallbackConfig();
             require(fallbackHandler == IFallback(module), "module address mismatch");
             IHook hook = _uninstallFallback(fallbackData);
-            _uninstallHook(hook, hookData);
+            if(bytes1(hookData[0]) == bytes1(0xff)) {
+                _uninstallHook(hook, hookData[1:]);
+            }
         } else if (moduleType == 4) {
             // force call onInstall for hook
             // NOTE: for hook, kernel does not support independant hook install,
@@ -457,7 +466,10 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             ISigner(module).onUninstall(deInitData);
         } else if (moduleType == 7) {
             IHook hook = _uninstallSelector(bytes4(deInitData[0:4]));
-            _uninstallHook(hook, deInitData[4:]);
+            bytes calldata hookData = deInitData[4:];
+            if(bytes1(hookData[0]) == bytes1(0xff)) {
+                _uninstallHook(hook, hookData[1:]);
+            }
         } else {
             revert InvalidModuleType();
         }
