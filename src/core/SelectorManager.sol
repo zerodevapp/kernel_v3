@@ -10,7 +10,7 @@ bytes32 constant SELECTOR_MANAGER_STORAGE_SLOT = 0x7c341349a4360fdd5d5bc07e69f32
 abstract contract SelectorManager {
     struct SelectorConfig {
         IHook hook; // 20 bytes for hook address
-        IFallback target; // 20 bytes target will be fallback module, called with call
+        address target; // 20 bytes target will be fallback module, called with call
     }
 
     struct SelectorStorage {
@@ -43,7 +43,7 @@ abstract contract SelectorManager {
         }
     }
 
-    function _installSelector(bytes4 selector, IFallback target, IHook hook) internal {
+    function _installSelector(bytes4 selector, address target, IHook hook) internal {
         if (address(hook) == address(0)) {
             hook = IHook(address(1));
         }
@@ -57,7 +57,7 @@ abstract contract SelectorManager {
         SelectorConfig storage ss = _selectorConfig(selector);
         hook = ss.hook;
         ss.hook = IHook(address(0));
-        ss.target = IFallback(address(0));
+        ss.target = address(0);
     }
 
     function _installFallback(IFallback fallbackHandler, bytes calldata fallbackData, IHook hook) internal {

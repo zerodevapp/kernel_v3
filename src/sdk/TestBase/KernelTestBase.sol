@@ -404,8 +404,8 @@ abstract contract KernelTestBase is Test {
 
         SelectorManager.SelectorConfig memory config = kernel.selectorConfig(MockAction.doSomething.selector);
         assertEq(address(config.hook), address(1));
-        vm.expectEmit(address(mockAction));
-        emit MockAction.MockActionEvent(address(mockAction));
+        vm.expectEmit(address(kernel));
+        emit MockAction.MockActionEvent(address(kernel));
         MockAction(address(kernel)).doSomething();
     }
 
@@ -431,8 +431,8 @@ abstract contract KernelTestBase is Test {
         SelectorManager.SelectorConfig memory config = kernel.selectorConfig(MockAction.doSomething.selector);
         assertEq(address(config.hook), address(mockHook));
 
-        vm.expectEmit(address(mockAction));
-        emit MockAction.MockActionEvent(address(mockAction));
+        vm.expectEmit(address(kernel));
+        emit MockAction.MockActionEvent(address(kernel));
         MockAction(address(kernel)).doSomething();
         assertEq(
             mockHook.preHookData(address(kernel)), abi.encodePacked(address(this), MockAction.doSomething.selector)

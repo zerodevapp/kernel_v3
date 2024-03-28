@@ -369,7 +369,7 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
                 // install selector with hook and target contract
                 _installSelector(
                     selector,
-                    IFallback(address(bytes20(selectorData[4:24]))),
+                    address(bytes20(selectorData[4:24])),
                     IHook(address(bytes20(selectorData[24:44])))
                 );
                 _installHook(IHook(address(bytes20(selectorData[24:44]))), selectorData[44:]);
