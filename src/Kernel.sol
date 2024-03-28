@@ -331,18 +331,16 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             _installExecutor(IExecutor(module), executorData, hook);
             _installHook(hook, hookData);
         } else if (moduleType == 3) {
-            //TODO : update this to use _installSelector
             bytes calldata fallbackData;
             bytes calldata hookData;
             assembly {
-                fallbackData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 20)))
+                fallbackData.offset := add(add(initData.offset, 56), calldataload(add(initData.offset, 24)))
                 fallbackData.length := calldataload(sub(fallbackData.offset, 32))
-                hookData.offset := add(add(initData.offset, 52), calldataload(add(initData.offset, 52)))
+                hookData.offset := add(add(initData.offset, 56), calldataload(add(initData.offset, 56)))
                 hookData.length := calldataload(sub(hookData.offset, 32))
             }
-            IHook hook = IHook(address(bytes20(initData[0:20])));
-            _installFallback(IFallback(module), fallbackData, hook);
-            _installHook(hook, hookData);
+            _installSelector(bytes4(initData[0:4]), IFallback(module), fallbackData, IHook(address(bytes20(initData[4:24]))));
+            _installHook(IHook(address(bytes20(initData[4:24]))), hookData);
         } else if (moduleType == 4) {
             // force call onInstall for hook
             // NOTE: for hook, kernel does not support independant hook install,
@@ -360,9 +358,6 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             // signer is expected to be paired with proper permissionId
             // to "ADD" permission, use "installValidations()" function
             ISigner(module).onInstall(initData);
-        } else if (moduleType == 7) {
-            _installSelector(bytes4(initData[0:4]), IFallback(module), IHook(address(bytes20(initData[4:24]))));
-            _installHook(IHook(address(bytes20(initData[4:24]))), initData[24:]);
         } else {
             revert InvalidModuleType();
         }

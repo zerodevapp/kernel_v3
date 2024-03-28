@@ -478,6 +478,7 @@ abstract contract KernelTestBase is Test {
                 3,
                 address(mockFallback),
                 abi.encodePacked(
+                    MockFallback.fallbackFunction.selector,
                     address(mockHook),
                     abi.encode(abi.encodePacked("fallbackData"), abi.encodePacked(bytes1(0xff), "hookData"))
                 )

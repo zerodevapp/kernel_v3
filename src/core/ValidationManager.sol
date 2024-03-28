@@ -363,24 +363,38 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
             enableSig.length := calldataload(sub(enableSig.offset, 32))
         }
         _installValidation(vId, config, validatorData, hookData); // NOTE: for enable mode, nonce does not increase
+        _enableSelectorData(selector, selectorData);
+        _setSelector(vId, selector, true);
+        return (digest, enableSig);
+    }
+
+    function _enableSelectorData(bytes4 selector, bytes calldata selectorData) internal {
         if (selectorData.length >= 4) {
             require(bytes4(selectorData[0:4]) == selector, "Invalid selector");
             if (selectorData.length >= 44) {
+                bytes calldata fallbackData;
+                assembly {
+                    fallbackData.offset := add(add(selectorData.offset, 76), calldataload(add(selectorData.offset, 44)))
+                    fallbackData.length := calldataload(sub(fallbackData.offset, 32))
+                }
                 // install selector with hook and target contract
                 _installSelector(
                     selector,
                     IFallback(address(bytes20(selectorData[4:24]))),
+                    fallbackData,
                     IHook(address(bytes20(selectorData[24:44])))
                 );
-                _installHook(IHook(address(bytes20(selectorData[24:44]))), selectorData[44:]);
-                _setSelector(vId, selector, true);
+                bytes calldata fallbackHookData;
+                assembly {
+                    fallbackHookData.offset := add(add(selectorData.offset, 76), calldataload(add(selectorData.offset, 76)))
+                    fallbackHookData.length := calldataload(sub(fallbackHookData.offset, 32))
+                }
+                _installHook(IHook(address(bytes20(selectorData[24:44]))), fallbackHookData);
             } else {
                 // set without install
                 require(selectorData.length == 4, "Invalid selectorData");
-                _setSelector(vId, selector, true);
             }
         }
-        return (digest, enableSig);
     }
 
     function _enableDigest(ValidationId vId, bytes calldata packedData)

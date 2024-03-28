@@ -43,13 +43,14 @@ abstract contract SelectorManager {
         }
     }
 
-    function _installSelector(bytes4 selector, IFallback target, IHook hook) internal {
+    function _installSelector(bytes4 selector, IFallback target, bytes calldata fallbackData, IHook hook) internal {
         if (address(hook) == address(0)) {
             hook = IHook(address(1));
         }
         SelectorConfig storage ss = _selectorConfig(selector);
         // we are going to install only through delegatecall
         ss.hook = hook;
+        target.onInstall(fallbackData);
         ss.target = target;
     }
 
