@@ -286,10 +286,7 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
         bytes calldata userOpSig = op.signature;
         unchecked {
             if (vMode == VALIDATION_MODE_ENABLE) {
-                bytes4 selector = bytes4(op.callData[0:4]) == IAccountExecute.executeUserOp.selector
-                    ? bytes4(op.callData[4:8])
-                    : bytes4(op.callData[0:4]);
-                (validationData, userOpSig) = _enableMode(vId, selector, op.signature);
+                (validationData, userOpSig) = _enableMode(vId, op.signature);
                 userOp.signature = userOpSig;
             }
 
@@ -316,12 +313,12 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
         }
     }
 
-    function _enableMode(ValidationId vId, bytes4 selector, bytes calldata packedData)
+    function _enableMode(ValidationId vId, bytes calldata packedData)
         internal
         returns (ValidationData validationData, bytes calldata userOpSig)
     {
         ValidationStorage storage state = _validationStorage();
-        (bytes32 digest, bytes calldata enableSig) = _checkEnableSig(vId, selector, packedData);
+        (bytes32 digest, bytes calldata enableSig) = _checkEnableSig(vId, packedData);
         ValidationType vType = ValidatorLib.getType(state.rootValidator);
         bytes4 result;
         if (vType == VALIDATION_TYPE_VALIDATOR) {
@@ -347,7 +344,7 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
         return (validationData, userOpSig);
     }
 
-    function _checkEnableSig(ValidationId vId, bytes4 selector, bytes calldata packedData)
+    function _checkEnableSig(ValidationId vId, bytes calldata packedData)
         internal
         returns (bytes32, bytes calldata enableSig)
     {
@@ -363,8 +360,8 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
             enableSig.length := calldataload(sub(enableSig.offset, 32))
         }
         _installValidation(vId, config, validatorData, hookData); // NOTE: for enable mode, nonce does not increase
+        bytes4 selector = bytes4(selectorData[0:4]);
         if (selectorData.length >= 4) {
-            require(bytes4(selectorData[0:4]) == selector, "Invalid selector");
             if (selectorData.length >= 44) {
                 // install selector with hook and target contract
                 _installSelector(
@@ -373,13 +370,12 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
                     IHook(address(bytes20(selectorData[24:44])))
                 );
                 _installHook(IHook(address(bytes20(selectorData[24:44]))), selectorData[44:]);
-                _setSelector(vId, selector, true);
             } else {
                 // set without install
                 require(selectorData.length == 4, "Invalid selectorData");
-                _setSelector(vId, selector, true);
             }
         }
+        _setSelector(vId, selector, true);
         return (digest, enableSig);
     }
 
