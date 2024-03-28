@@ -1,6 +1,6 @@
 pragma solidity ^0.8.0;
 
-import {IValidator, IHook, IPolicy, ISigner} from "../interfaces/IERC7579Modules.sol";
+import {IValidator, IHook, IPolicy, ISigner, IFallback} from "../interfaces/IERC7579Modules.sol";
 import {PackedUserOperation} from "../interfaces/PackedUserOperation.sol";
 import {SelectorManager} from "./SelectorManager.sol";
 import {HookManager} from "./HookManager.sol";
@@ -368,7 +368,9 @@ abstract contract ValidationManager is EIP712, SelectorManager, HookManager {
             if (selectorData.length >= 44) {
                 // install selector with hook and target contract
                 _installSelector(
-                    selector, address(bytes20(selectorData[4:24])), IHook(address(bytes20(selectorData[24:44])))
+                    selector,
+                    IFallback(address(bytes20(selectorData[4:24]))),
+                    IHook(address(bytes20(selectorData[24:44])))
                 );
                 _installHook(IHook(address(bytes20(selectorData[24:44]))), selectorData[44:]);
                 _setSelector(vId, selector, true);

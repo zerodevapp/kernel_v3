@@ -104,7 +104,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
         version = "0.3.0-beta";
     }
 
-    function _doFallback2771(IFallback fallbackHandler) internal view returns (bool success, bytes memory result) {
+    function _doFallback2771(IFallback fallbackHandler) internal returns (bool success, bytes memory result) {
         assembly {
             function allocate(length) -> pos {
                 pos := mload(0x40)
@@ -120,8 +120,8 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             mstore(senderPtr, shl(96, caller()))
 
             // Add 20 bytes for the address appended add the end
-            // NOTE: we are only allowing static call for fallback
-            success := staticcall(gas(), fallbackHandler, calldataPtr, add(calldatasize(), 20), 0, 0)
+            // NOTE: we are only allowing call for fallback
+            success := call(gas(), fallbackHandler, 0, calldataPtr, add(calldatasize(), 20), 0, 0)
 
             result := mload(0x40)
             mstore(result, returndatasize()) // Store the length.
@@ -159,7 +159,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
                 context = _doPreHook(config.hook, msg.data);
             }
             // execute action
-            (success, result) = ExecLib._executeDelegatecall(config.target, msg.data);
+            (success, result) = _doFallback2771(config.target);
             if (address(config.hook) != address(1)) {
                 _doPostHook(config.hook, context, success, result);
             }
@@ -331,6 +331,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             _installExecutor(IExecutor(module), executorData, hook);
             _installHook(hook, hookData);
         } else if (moduleType == 3) {
+            //TODO : update this to use _installSelector
             bytes calldata fallbackData;
             bytes calldata hookData;
             assembly {
@@ -360,7 +361,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             // to "ADD" permission, use "installValidations()" function
             ISigner(module).onInstall(initData);
         } else if (moduleType == 7) {
-            _installSelector(bytes4(initData[0:4]), module, IHook(address(bytes20(initData[4:24]))));
+            _installSelector(bytes4(initData[0:4]), IFallback(module), IHook(address(bytes20(initData[4:24]))));
             _installHook(IHook(address(bytes20(initData[4:24]))), initData[24:]);
         } else {
             revert InvalidModuleType();
@@ -485,7 +486,7 @@ contract Kernel is IAccount, IAccountExecute, IERC7579Account, ValidationManager
             (IFallback fallbackHandler,) = _fallbackConfig();
             return fallbackHandler == IFallback(module);
         } else if (moduleType == 6) {
-            return _selectorConfig(bytes4(additionalContext[0:4])).target == module;
+            return _selectorConfig(bytes4(additionalContext[0:4])).target == IFallback(module);
         } else {
             return false;
         }
